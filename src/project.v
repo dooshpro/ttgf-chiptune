@@ -33,29 +33,6 @@ module tt_um_dooshpro_chiptune (
 
   wire any_key_active = |keysync2;
 
-  reg [7:0] reloadval;
-  reg [7:0] cnt;
-  reg audio;
-
-  always @(posedge clk) begin
-    if (!rst_n) begin
-      cnt <= 0;
-      audio <= 0;
-    end
-    else if (!any_key_active) begin
-      cnt <= 0;
-      audio <= 0;
-    end
-
-    else if (cnt == 0) begin
-      cnt <= reloadval;
-      audio <= ~audio;
-    end
-    else begin
-      cnt <= cnt - 1'b1;
-    end
-  end
-
   localparam [7:0] reloadC4 = 190;
   localparam [7:0] reloadD4 = 169;
   localparam [7:0] reloadE4 = 151;
@@ -65,26 +42,65 @@ module tt_um_dooshpro_chiptune (
   localparam [7:0] reloadB4 = 100;
   localparam [7:0] reloadC5 = 95;
 
-  always @(*) begin
-    if (keysync2[0])
-      reloadval = reloadC4;
-    else if (keysync2[1])
-      reloadval = reloadD4;
-    else if (keysync2[2])
-      reloadval = reloadE4;
-    else if (keysync2[3])
-      reloadval = reloadF4;
-    else if (keysync2[4])
-      reloadval = reloadG4;
-    else if (keysync2[5])
-      reloadval = reloadA4;
-    else if (keysync2[6])
-      reloadval = reloadB4;
-    else if (keysync2[7])
-      reloadval = reloadC5;
+  reg [7:0] cnt [0:7];
+  reg [7:0] tone;
+  reg [15:0] vibcnt; //vibrato
+
+  always @(posedge clk) begin
+    if (!rst_n || !any_key_active)
+      vibcnt <= 0;
     else
-      reloadval = 0;
+      vibcnt <= vibcnt + 1'b1;
   end
+
+  function [7:0] getnote;
+    input integer key;
+    begin
+      case (key)
+        0: getnote = reloadC4;
+        1: getnote = reloadD4;
+        2: getnote = reloadE4;
+        3: getnote = reloadF4;
+        4: getnote = reloadG4;
+        5: getnote = reloadA4;
+        6: getnote = reloadB4;
+        7: getnote = reloadC5;
+        default: getnote = reloadC4;
+      endcase
+    end
+
+  endfunction
+
+  genvar i;
+  generate
+    for (i = 0; i < 8; i = i + 1) begin: notes
+
+      wire [7:0] reloadval;
+      assign reloadval =
+          (vibcnt[15:14] == 2'b01) ? getnote(i) + 1'b1 : (vibcnt[15:14] == 2'b11) ? getnote(i) - 1'b1 : getnote(i);
+
+      always @(posedge clk) begin
+        if (!rst_n) begin
+          cnt[i] <= 0;
+          tone[i] <= 0;
+        end
+        else if (!keysync2[i]) begin
+          cnt[i] <= 0;
+          tone[i] <= 0;
+        end
+        else if (cnt[i] == 0) begin
+          cnt[i] <= reloadval;
+          tone[i] <= ~tone[i];
+        end
+
+        else begin
+          cnt[i] <= cnt[i] - 1'b1;
+        end
+      end
+    end
+  endgenerate
+
+  wire audio = |tone;
 
   // All output pins must be assigned. If not used, assign to 0.
   assign uo_out = {audio, 7'b0};
